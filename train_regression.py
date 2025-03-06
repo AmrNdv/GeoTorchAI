@@ -8,19 +8,20 @@ from torch.utils.data.sampler import SubsetRandomSampler
 import torchvision.transforms as transforms
 from geotorchai.models.raster.deepsat2_reg import DeepSatV2_reg
 import matplotlib.pyplot as plt
+from matplotlib.colors import ListedColormap
 from torch.utils.data import DataLoader, SequentialSampler
 
 
 def createModelAndTrain():
     fullData = TRAIN_DATA
 
-    full_loader = DataLoader(fullData, batch_size= batch_size)
+    full_loader = DataLoader(fullData, batch_size=batch_size)
     channels_sum, channels_squared_sum, num_batches = 0, 0, 0
     for i, sample in enumerate(full_loader):
         data_temp, _ = sample
         data_temp = torch.tensor(data_temp, dtype=torch.float)
         channels_sum += torch.mean(data_temp, dim=[0, 2, 3])
-        channels_squared_sum += torch.mean(data_temp**2, dim=[0, 2, 3])
+        channels_squared_sum += torch.mean(data_temp ** 2, dim=[0, 2, 3])
         num_batches += 1
 
     print("Finished loading batches")
@@ -66,7 +67,6 @@ def createModelAndTrain():
         model.load_state_dict(torch.load("models/deepsatv2_regression_tf/model.base.pth"))
     print("Model has been defined")
 
-
     loss_fn = nn.MSELoss()
     optimizer = torch.optim.Adam(model.parameters(), lr=learning_rate)
     model.to(device)
@@ -104,7 +104,6 @@ def createModelAndTrain():
             # for j in range(batch_size):
             #   print("Label: ", labels[j].item(), " | Output: ", outputs[j].item(), " | Difference: ", outputs[j].item()-labels[j].item())
 
-
         # Average training loss for this epoch
         epoch_training_loss /= len(training_generator)
         training_losses.append(epoch_training_loss)
@@ -116,7 +115,6 @@ def createModelAndTrain():
         model.eval()
         with torch.no_grad():
             for i, sample in enumerate(val_generator):
-
                 inputs, labels = sample
 
                 inputs = torch.tensor(inputs, dtype=torch.float)
@@ -134,7 +132,6 @@ def createModelAndTrain():
         total_time += t_end - t_start
         epoch_runnned += 1
 
-
         # Validation
         print("Validation Loss (per sample): ", epoch_validation_loss)
 
@@ -145,6 +142,7 @@ def createModelAndTrain():
 
     plot_loss(training_losses, validation_losses)
     return model
+
 
 def test_regression_model(trained_model):
     TEST_DATA = SAT4(root="data/sat4_regression", is_train_data=False,
@@ -198,6 +196,9 @@ def test_regression_model(trained_model):
     print("\n************************")
     print(f"Test - Mean Squared  Error (MSE): {loss_untrained:.4f}")
 
+    plot_predictions_with_class_labels(all_labels, all_predictions_untrained, 'Graph')
+
+
 def plot_loss(training_losses, validation_losses):
     # Plot training and validation losses
     plt.figure(figsize=(10, 6))
@@ -212,8 +213,59 @@ def plot_loss(training_losses, validation_losses):
     plt.show()
     print("Training and validation loss plot saved as 'loss_plot.png'.")
 
+
+def plot_predictions_with_class_labels(all_labels, predicitons, plot_title):
+    # Define a custom color map for the values 0, 1, 2, 3
+    color_map = {
+        0: 'brown',
+        1: 'green',
+        2: 'lime',
+        3: 'grey'
+    }
+
+    # Define custom labels for the legend
+    class_labels = {
+        0: 'Barren land',
+        1: 'Trees',
+        2: 'Grassland',
+        3: 'None'
+    }
+
+    # Map the class_vector to colors
+    cmap = ListedColormap(list(color_map.values()))
+
+    # Create the scatter plot
+    plt.figure(figsize=(8, 8))
+    scatter = plt.scatter(
+        all_labels, predicitons, cmap=cmap, alpha=0.7, edgecolors='k'
+    )
+
+    # Add a custom legend
+    handles = [
+        plt.Line2D(
+            [0], [0], marker='o', color='w', markerfacecolor=color_map[cls],
+            markersize=10, label=class_labels[cls]
+        ) for cls in color_map.keys()
+    ]
+
+    plt.legend(handles=handles, title="Classes", loc='upper right', fontsize=10)
+    plt.plot(
+        [min(all_labels), max(all_labels)],
+        [min(all_labels), max(all_labels)],
+        'r--', label='Ideal Fit (y=x)'
+    )
+    plt.xlabel('Labels (Ground Truth)', fontsize=12)
+    plt.ylabel('Predictions', fontsize=12)
+    plt.axis('equal')
+    plt.xlim(-1, 1)
+    plt.ylim(min(predicitons), max(predicitons))
+    plt.title(f'{plot_title} vs Ground Truth', fontsize=14)
+    plt.grid(True)
+    plt.show()
+
+
 if __name__ == '__main__':
-    PRE_TRAIN= True
+    PRE_TRAIN = True
     TRAIN_DATA = SAT4(root="data/sat4_regression", include_additional_features=False, bands=["red", "green", "blue"],
                       mode="regression")
 
@@ -236,3 +288,9 @@ if __name__ == '__main__':
 
     model = createModelAndTrain()
     test_regression_model(model)
+
+    # params = {'batch_size': 16, 'shuffle': False}
+    # model = DeepSatV2_reg(3, 28, 28)
+    # print("model is using pretrained weights as baseline")
+    # model.load_state_dict(torch.load("models/deepsatv2_regression/model.best_MSE.pth"))
+    # test_regression_model(model)
